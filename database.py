@@ -1,7 +1,10 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
+if os.path.exists("/data"):
+    DB_PATH = "/data/finance.db"
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "finance.db")
 
 def get_db_connection():
     """Membuat koneksi ke database SQLite dengan row_factory Row untuk akses berbasis kolom."""
