@@ -283,8 +283,9 @@ async def cmd_start(message: Message):
         "• /saldo — Cek rincian saldo & akun\n"
         "• /rekap — Ringkasan arus kas bulanan\n"
         "• /transaksi — Riwayat transaksi terakhir\n"
-        "• /export — Unduh file laporan CSV\n"
+        "• /export — Unduh file laporan Excel (.xlsx)\n"
         "• /api — Kelola pool multi-key Gemini\n"
+        "• /reset — Reset seluruh database (Kembali seperti baru)\n"
         "• /help — Menampilkan panduan ini\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💡 _Ketik langsung perintah di atas di chat kapan saja!_ 🚀"
@@ -515,6 +516,57 @@ async def cmd_export(message: Message):
     except Exception as e:
         logger.error(f"Error generating Excel report: {e}", exc_info=True)
         await status_msg.edit_text("⚠️ Gagal membuat laporan Excel. Silakan coba beberapa saat lagi.", parse_mode="Markdown")
+
+# --- DATABASE RESET HANDLERS ---
+
+@router.message(Command("reset"))
+async def cmd_reset(message: Message):
+    text = (
+        "⚠️ *Konfirmasi Reset Database Keuangan*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Apakah Anda yakin ingin mengosongkan seluruh database keuangan?\n\n"
+        "📋 *Dampak Reset:*\n"
+        "• Seluruh riwayat transaksi (pemasukan & pengeluaran) akan dihapus permanen.\n"
+        "• Saldo dompet *Cash* dan *Jago* akan dikembalikan ke *Rp 0*.\n"
+        "• Dompet / e-wallet tambahan akan dihapus.\n"
+        "• 🔑 *Pool API Key Gemini Anda tetap dipertahankan aman.*\n\n"
+        "⚠️ _Tindakan ini tidak dapat dibatalkan!_"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔴 Ya, Reset Semua Data", callback_data="db_reset_confirm"),
+            InlineKeyboardButton(text="🔙 Batalkan", callback_data="db_reset_cancel")
+        ]
+    ])
+    await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+
+@router.callback_query(F.data == "db_reset_confirm")
+async def cb_db_reset_confirm(callback: CallbackQuery):
+    try:
+        res = models.reset_database(preserve_api_keys=True)
+        reply_text = (
+            "✅ *Database Berhasil Direset Total!*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🗑️ *Transaksi Dihapus:* {res['deleted_transactions']} transaksi\n"
+            "💳 *Status Dompet:* Cash (Rp 0) & Jago (Rp 0)\n"
+            "🔑 *API Key Pool:* Tetap aktif & siap pakai\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🌱 _Database Anda kini bersih seperti baru. Siap mencatat transaksi baru!_ 🚀"
+        )
+        await callback.message.edit_text(reply_text, parse_mode="Markdown")
+        await callback.answer("✅ Database berhasil dikosongkan!", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error resetting database: {e}", exc_info=True)
+        await callback.answer("⚠️ Gagal mereset database.", show_alert=True)
+
+@router.callback_query(F.data == "db_reset_cancel")
+async def cb_db_reset_cancel(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "❌ *Reset Database Dibatalkan.*\n"
+        "Data transaksi dan saldo dompet Anda tetap aman tanpa perubahan.",
+        parse_mode="Markdown"
+    )
+    await callback.answer("Reset dibatalkan.", show_alert=False)
 
 # --- API KEY MANAGEMENT (MULTI-KEY POOL) ---
 

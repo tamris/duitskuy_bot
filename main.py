@@ -29,6 +29,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="transaksi", description="📝 Transaksi Terakhir"),
         BotCommand(command="export", description="📊 Unduh Laporan Excel (.xlsx)"),
         BotCommand(command="api", description="🔑 Kelola Multi Gemini API Key"),
+        BotCommand(command="reset", description="⚠️ Reset Semua Data Database"),
         BotCommand(command="help", description="💡 Panduan & Format Cepat")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())

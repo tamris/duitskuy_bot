@@ -200,6 +200,15 @@ class TestFinanceBot(unittest.TestCase):
         self.assertTrue(models.delete_api_key(new_k["id"]))
         self.assertIsNone(models.get_api_key_by_id(new_k["id"]))
 
+    def test_database_reset(self):
+        w = models.get_default_wallet()
+        models.add_transaction(w["id"], "IN", 500000, "Bonus", "Bonus Reset Test")
+        res = models.reset_database(preserve_api_keys=True)
+        self.assertTrue(res["api_keys_preserved"])
+        self.assertEqual(len(models.get_all_transactions_for_export()), 0)
+        wallets = models.get_all_wallets()
+        self.assertEqual(sum(item["balance"] for item in wallets), 0.0)
+
 if __name__ == "__main__":
     unittest.main()
 
