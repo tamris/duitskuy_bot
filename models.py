@@ -195,8 +195,11 @@ def detect_category(description: str, tx_type: str) -> str:
         return "Transportasi"
     
     if any(w in desc_lower for w in [
-        "listrik", "pln", "air", "pdam", "wifi", "indihome", "biznet", "pulsa",
-        "kuota", "paket data", "bpjs", "iuran", "kontrakan", "kos", "sewa"
+        "tagihan", "paylater", "spaylater", "gopaylater", "kredivo", "akulaku", "indodana",
+        "kartu kredit", "credit card", "cc", "cicilan", "angsuran", "kpr", "leasing", "pinjol",
+        "listrik", "pln", "air", "pdam", "gas", "wifi", "indihome", "biznet", "myrepublic",
+        "firstmedia", "pulsa", "kuota", "paket data", "bpjs", "iuran", "kontrakan", "kos", "sewa",
+        "pajak", "pbb", "stnk", "asuransi", "ipl", "maintenance", "langganan", "subscription", "bill"
     ]):
         return "Utilitas & Tagihan"
     
