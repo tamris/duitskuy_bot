@@ -1,4 +1,5 @@
 import datetime
+import re
 from database import get_db_connection
 
 def format_rupiah(amount: float) -> str:
@@ -95,7 +96,6 @@ def extract_wallet_from_text(description: str):
     Mendeteksi apakah terdapat nama dompet atau alias singkatannya pada teks transaksi.
     Mengembalikan tuple: (wallet_dict, clean_description).
     """
-    import re
     wallets = get_all_wallets()
     
     for w in wallets:
@@ -150,50 +150,6 @@ def delete_wallet(wallet_id: int) -> bool:
     cursor.execute("DELETE FROM wallets WHERE id = ?;", (wallet_id,))
     conn.commit()
     conn.close()
-
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
     return True
 
 def set_wallet_balance(wallet_id: int, new_balance: float) -> bool:
@@ -204,50 +160,6 @@ def set_wallet_balance(wallet_id: int, new_balance: float) -> bool:
     affected = cursor.rowcount
     conn.commit()
     conn.close()
-
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
     return affected > 0
 
 def detect_category(description: str, tx_type: str) -> str:
@@ -351,50 +263,6 @@ def add_transaction(
 
     conn.commit()
     conn.close()
-
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
 
     return {
         "id": tx_id,
@@ -510,50 +378,6 @@ def delete_transaction(tx_id: int) -> bool:
     cursor.execute("DELETE FROM transactions WHERE id = ?;", (tx_id,))
     conn.commit()
     conn.close()
-
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
     return True
 
 def switch_transaction_wallet(tx_id: int):
@@ -614,59 +438,14 @@ def switch_transaction_wallet(tx_id: int):
     conn.commit()
     conn.close()
 
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
     return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
-
-    return {
-        "tx_id": tx_id,
+        "new_wallet_id": new_wallet_id,
         "new_wallet_name": next_wallet["name"],
-        "new_balance": new_balance,
-        "amount": amount
+        "new_balance": new_balance
     }
 
-def get_recent_transactions(limit: int = 5) -> list:
-    """Mengambil daftar transaksi terbaru beserta nama dompetnya."""
+def get_recent_transactions(limit: int = 10) -> list:
+    """Mengambil transaksi terbaru dengan join tabel wallets untuk mendapatkan nama dompet."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -777,50 +556,6 @@ def delete_api_key(key_id: int) -> bool:
     deleted = cursor.rowcount > 0
     conn.commit()
     conn.close()
-
-
-def reset_database(preserve_api_keys: bool = True) -> dict:
-    """
-    Mereset database keuangan:
-    - Menghapus semua riwayat transaksi
-    - Mengembalikan saldo dompet bawaan (Cash & Jago) ke 0, menghapus dompet tambahan
-    - Mereset fail_count API Key ke kondisi prima
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM transactions;")
-    tx_count = cursor.fetchone()[0]
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
     return deleted
 
 def record_api_key_usage(key_id: int, success: bool):
@@ -883,36 +618,3 @@ def reset_database(preserve_api_keys: bool = True) -> dict:
         "wallets": ["Cash", "Jago"],
         "api_keys_preserved": preserve_api_keys
     }
-
-
-    # 1. Hapus semua riwayat transaksi
-    cursor.execute("DELETE FROM transactions;")
-    try:
-        cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'transactions';")
-    except Exception:
-        pass
-
-    # 2. Reset dompet ke default (Cash: 0, Jago: 0)
-    cursor.execute("DELETE FROM wallets WHERE name NOT IN ('Cash', 'Jago');")
-    cursor.execute("UPDATE wallets SET balance = 0;")
-    cursor.execute("SELECT COUNT(*) FROM wallets;")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO wallets (name, balance) VALUES ('Cash', 0), ('Jago', 0);")
-
-    # 3. Reset status API Keys ke kondisi prima
-    if preserve_api_keys:
-        cursor.execute("UPDATE api_keys SET fail_count = 0, last_used = NULL, is_active = 1;")
-    else:
-        cursor.execute("DELETE FROM api_keys;")
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "deleted_transactions": tx_count,
-        "wallets": ["Cash", "Jago"],
-        "api_keys_preserved": preserve_api_keys
-    }
-
-
-
