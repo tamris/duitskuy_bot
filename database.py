@@ -90,6 +90,7 @@ def init_db():
             ("Belanja Bulanan", "OUT"),
             ("Transportasi", "OUT"),
             ("Utilitas & Tagihan", "OUT"),
+            ("Cicilan & Hutang", "OUT"),
             ("Hiburan & Hobi", "OUT"),
             ("Kesehatan", "OUT"),
             ("Umum", "OUT"),
@@ -99,6 +100,8 @@ def init_db():
             ("Pemasukan Lain", "IN")
         ]
         cursor.executemany("INSERT INTO categories (name, type) VALUES (?, ?);", default_categories)
+    else:
+        cursor.execute("INSERT OR IGNORE INTO categories (name, type) VALUES (?, ?);", ("Cicilan & Hutang", "OUT"))
 
     conn.commit()
     conn.close()

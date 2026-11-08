@@ -172,7 +172,7 @@ def sync_gemini_ocr(image_bytes: bytes) -> dict:
         "- merchant: nama toko / merchant / restoran (string, default 'Merchant' jika tidak terbaca)\n"
         "- total: total belanja nominal murni berupa angka integer atau float tanpa titik, koma, atau simbol mata uang (contoh: 45000)\n"
         "- kategori: kategori pengeluaran, pilih salah satu yang paling cocok: "
-        "'Belanja Bulanan', 'Makanan & Minuman', 'Transportasi', 'Utilitas & Tagihan', 'Hiburan & Hobi', 'Kesehatan', atau 'Umum'\n"
+        "'Belanja Bulanan', 'Makanan & Minuman', 'Transportasi', 'Utilitas & Tagihan', 'Cicilan & Hutang', 'Hiburan & Hobi', 'Kesehatan', atau 'Umum'\n"
         "- metode_pembayaran: metode bayar pada struk jika ada (contoh: QRIS, Tunai, Cash, Debit, Kartu, atau 'Unknown')\n"
         "- items: list barang atau layanan yang dibeli, setiap item memiliki: "
         "  - name: nama barang (string)\n"
