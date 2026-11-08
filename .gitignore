@@ -1,0 +1,17 @@
+# Environment variables / secret keys
+.env
+
+# Database lokal (biar data transaksi gak ikut ke-upload)
+*.db
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (kalau ada folder venv/env)
+venv/
+env/
+.venv/
