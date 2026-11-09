@@ -91,6 +91,15 @@ def get_wallet_by_name(name: str):
     conn.close()
     return dict(row) if row else None
 
+def get_wallet_by_id(wallet_id: int):
+    """Mencari dompet berdasarkan ID."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM wallets WHERE id = ?;", (wallet_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def extract_wallet_from_text(description: str):
     """
     Mendeteksi apakah terdapat nama dompet atau alias singkatannya pada teks transaksi.
@@ -167,11 +176,11 @@ def detect_category(description: str, tx_type: str) -> str:
     desc_lower = description.lower()
     
     if tx_type == "IN":
-        if any(w in desc_lower for w in ["gaji", "salary", "payday", "payroll"]):
+        if any(w in desc_lower for w in ["gaji", "salary", "payday", "payroll", "honor", "upah", "slip"]):
             return "Gaji"
-        if any(w in desc_lower for w in ["bonus", "thr", "hadiah", "reward", "tips"]):
+        if any(w in desc_lower for w in ["bonus", "thr", "hadiah", "reward", "tips", "angpao", "giveaway"]):
             return "Bonus & Hadiah"
-        if any(w in desc_lower for w in ["dividen", "saham", "crypto", "profit", "cuan", "bunga"]):
+        if any(w in desc_lower for w in ["dividen", "saham", "crypto", "profit", "cuan", "bunga", "reksadana", "investasi"]):
             return "Investasi"
         return "Pemasukan Lain"
     
@@ -450,6 +459,59 @@ def switch_transaction_wallet(tx_id: int):
         "new_wallet_id": new_wallet_id,
         "new_wallet_name": next_wallet["name"],
         "new_balance": new_balance
+    }
+
+def toggle_transaction_type(tx_id: int):
+    """
+    Mengubah tipe transaksi antara IN (Pemasukan) dan OUT (Pengeluaran),
+    menyesuaikan saldo dompet terkait, dan mengembalikan info transaksi baru.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM transactions WHERE id = ?;", (tx_id,))
+    tx = cursor.fetchone()
+    if not tx:
+        conn.close()
+        return None
+
+    wallet_id = tx["wallet_id"]
+    current_type = tx["type"]
+    amount = tx["amount"]
+    desc = tx["description"] or ""
+
+    if current_type == "OUT":
+        new_type = "IN"
+        # Menghapus efek OUT (+amount) dan menambah efek IN (+amount) = + 2 * amount
+        cursor.execute("UPDATE wallets SET balance = balance + ? WHERE id = ?;", (amount * 2, wallet_id))
+        new_category = detect_category(desc, "IN")
+    else:
+        new_type = "OUT"
+        # Menghapus efek IN (-amount) dan menambah efek OUT (-amount) = - 2 * amount
+        cursor.execute("UPDATE wallets SET balance = balance - ? WHERE id = ?;", (amount * 2, wallet_id))
+        new_category = detect_category(desc, "OUT")
+
+    cursor.execute("""
+        UPDATE transactions 
+        SET type = ?, category = ? 
+        WHERE id = ?;
+    """, (new_type, new_category, tx_id))
+
+    cursor.execute("SELECT balance, name FROM wallets WHERE id = ?;", (wallet_id,))
+    w = cursor.fetchone()
+    new_balance = w["balance"]
+    wallet_name = w["name"]
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "tx_id": tx_id,
+        "new_type": new_type,
+        "new_category": new_category,
+        "amount": amount,
+        "wallet_name": wallet_name,
+        "new_balance": new_balance,
+        "description": desc
     }
 
 def get_recent_transactions(limit: int = 10) -> list:

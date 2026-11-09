@@ -168,16 +168,21 @@ def sync_gemini_ocr(image_bytes: bytes) -> dict:
     ordered_keys = keys[start_idx:] + keys[:start_idx]
 
     prompt = (
-        "Ekstrak data dari struk belanja ini ke format JSON dengan spesifikasi key berikut:\n"
-        "- merchant: nama toko / merchant / restoran (string, default 'Merchant' jika tidak terbaca)\n"
-        "- total: total belanja nominal murni berupa angka integer atau float tanpa titik, koma, atau simbol mata uang (contoh: 45000)\n"
-        "- kategori: kategori pengeluaran, pilih salah satu yang paling cocok: "
-        "'Belanja Bulanan', 'Makanan & Minuman', 'Transportasi', 'Utilitas & Tagihan', 'Cicilan & Hutang', 'Hiburan & Hobi', 'Kesehatan', atau 'Umum'\n"
-        "- metode_pembayaran: metode bayar pada struk jika ada (contoh: QRIS, Tunai, Cash, Debit, Kartu, atau 'Unknown')\n"
-        "- items: list barang atau layanan yang dibeli, setiap item memiliki: "
-        "  - name: nama barang (string)\n"
-        "  - price: harga satuan atau total barang (angka integer/float)\n"
-        "  - qty: jumlah kuantitas (integer/float, default 1)\n\n"
+        "Analisis gambar ini (bisa berupa struk belanja, nota kasir, slip gaji, bukti transfer masuk/keluar, mutasi bank, atau invoice pembayaran) "
+        "dan ekstrak datanya ke format JSON murni dengan spesifikasi key berikut:\n"
+        "- tipe: tentukan tipe transaksi, pilih salah satu: "
+        "  - 'IN' jika ini dokumen pemasukan uang, slip gaji, bukti transfer dana masuk/diterima, invoice terbayar, atau mutasi kredit.\n"
+        "  - 'OUT' jika ini dokumen pengeluaran uang, struk belanja kasir, nota pembelian, pembayaran tagihan/cicilan, atau transfer dana keluar.\n"
+        "- merchant: nama toko, restoran, nama perusahaan/instansi pemberi gaji, atau pengirim/penerima dana (string, contoh: 'PT SINAR JAYA KONTRAK', 'Indomaret', default 'Pihak Terkait' jika tidak tertera jelas)\n"
+        "- total: nominal total bersih transaksi berupa angka murni (integer atau float) tanpa titik, koma, atau simbol mata uang. Khusus slip gaji, ambil 'TOTAL DITERIMA' / Take Home Pay (contoh: 4575000)\n"
+        "- kategori: kategori transaksi yang paling cocok:\n"
+        "  - Jika tipe 'IN': pilih salah satu dari ['Gaji', 'Bonus & Hadiah', 'Investasi', 'Pemasukan Lain']\n"
+        "  - Jika tipe 'OUT': pilih salah satu dari ['Makanan & Minuman', 'Belanja Bulanan', 'Transportasi', 'Utilitas & Tagihan', 'Cicilan & Hutang', 'Hiburan & Hobi', 'Kesehatan', 'Umum']\n"
+        "- metode_pembayaran: metode pembayaran atau nama bank / e-wallet jika tertera (contoh: 'Transfer Bank', 'QRIS', 'Tunai', 'BCA', 'Jago', atau 'Unknown')\n"
+        "- items: list rincian komponen transaksi (untuk slip gaji: komponen pendapatan dan potongan; untuk struk: nama barang belanjaan). Setiap item memiliki:\n"
+        "  - name: nama item / komponen rincian (string)\n"
+        "  - price: nominal item (angka integer/float, jika potongan bisa bernilai minus atau positif)\n"
+        "  - qty: kuantitas (integer/float, default 1)\n\n"
         "Kembalikan HANYA JSON murni yang valid tanpa format markdown tambahan."
     )
 
@@ -659,14 +664,11 @@ async def handle_photo(message: Message, bot: Bot):
 
         if total_amount <= 0:
             await status_msg.edit_text(
-                "⚠️ *Gagal Mendeteksi Total Belanja:*\n"
-                "AI tidak dapat menemukan nominal total pada struk. Pastikan foto struk terlihat jelas dan coba kirim kembali.",
+                "⚠️ *Gagal Mendeteksi Total Nominal:*\n"
+                "AI tidak dapat menemukan nominal total pada dokumen/struk. Pastikan foto terlihat jelas dan coba kirim kembali.",
                 parse_mode="Markdown"
             )
             return
-
-        category = receipt_data.get("kategori") or "Belanja Bulanan"
-        desc = f"Struk: {merchant}"
 
         # 1. Deteksi dompet dari Caption pesan jika user menyertakan 'jago' atau 'cash'
         caption_text = (message.caption or "").strip()
@@ -678,7 +680,7 @@ async def handle_photo(message: Message, bot: Bot):
                     target_wallet = w
                     break
 
-        # 2. Jika tidak ada caption dompet, cek apakah struk menyebutkan QRIS / Debit / Transfer
+        # 2. Jika tidak ada caption dompet, cek apakah struk/dokumen menyebutkan QRIS / Debit / Transfer
         if not target_wallet:
             payment_method = str(receipt_data.get("metode_pembayaran") or "").lower()
             if any(term in payment_method for term in ["qris", "debit", "transfer", "kartu", "card", "edc", "cashless", "bca", "jago"]):
@@ -690,16 +692,47 @@ async def handle_photo(message: Message, bot: Bot):
         if not target_wallet:
             target_wallet = models.get_default_wallet()
 
-        # Simpan ke database
+        # 4. Tentukan Tipe Transaksi (IN vs OUT)
+        caption_lower = caption_text.lower()
+        has_income_hint = any(w in caption_lower for w in ["gaji", "salary", "bonus", "pemasukan", "income", "diterima", "masuk", "terima", "honor", "thr", "fee", "upah"]) or caption_text.startswith("+")
+        has_expense_hint = any(w in caption_lower for w in ["beli", "bayar", "jajan", "belanja", "pengeluaran", "keluar", "struk"]) or caption_text.startswith("-")
+
+        detected_type = str(receipt_data.get("tipe") or "").upper().strip()
+        if has_income_hint:
+            tx_type = "IN"
+        elif has_expense_hint:
+            tx_type = "OUT"
+        elif detected_type in ["IN", "PEMASUKAN", "INCOME"]:
+            tx_type = "IN"
+        else:
+            tx_type = "OUT"
+
+        # 5. Kategori dan Deskripsi
+        category = receipt_data.get("kategori") or ""
+        if tx_type == "IN":
+            valid_in_cats = ["Gaji", "Bonus & Hadiah", "Investasi", "Pemasukan Lain"]
+            if category not in valid_in_cats:
+                category = models.detect_category(f"{merchant} {caption_text}", "IN")
+            desc = f"Pemasukan: {merchant}"
+        else:
+            valid_out_cats = [
+                "Makanan & Minuman", "Belanja Bulanan", "Transportasi",
+                "Utilitas & Tagihan", "Cicilan & Hutang", "Hiburan & Hobi", "Kesehatan", "Umum"
+            ]
+            if category not in valid_out_cats:
+                category = models.detect_category(f"{merchant} {caption_text}", "OUT")
+            desc = f"Struk: {merchant}"
+
+        # 6. Simpan ke database
         tx = models.add_transaction(
             wallet_id=target_wallet["id"],
-            tx_type="OUT",
+            tx_type=tx_type,
             amount=total_amount,
             category=category,
             description=desc
         )
 
-        # Susun daftar barang dengan proteksi karakter khusus Markdown
+        # 7. Susun daftar barang / komponen dengan proteksi karakter khusus Markdown
         items_text = ""
         if items and isinstance(items, list):
             items_lines = []
@@ -708,33 +741,55 @@ async def handle_photo(message: Message, bot: Bot):
                 price = it.get("price") or it.get("harga") or it.get("total") or 0
                 qty = it.get("qty") or it.get("jumlah") or it.get("kuantitas") or 1
                 name_safe = escape_md(str(name))
-                items_lines.append(f" • {name_safe} ({qty}x) - {models.format_rupiah(float(price))}")
+                price_val = float(price)
+                if price_val < 0:
+                    price_str = f"-{models.format_rupiah(abs(price_val))}"
+                else:
+                    price_str = models.format_rupiah(price_val)
+                items_lines.append(f" • {name_safe} ({qty}x) - {price_str}")
             if len(items) > 8:
-                items_lines.append(f" • _...dan {len(items) - 8} item lainnya_")
-            items_text = "\n📋 *Rincian Barang:*\n" + "\n".join(items_lines) + "\n"
+                items_lines.append(f" • _...dan {len(items) - 8} komponen lainnya_")
+            rincian_title = "📋 *Rincian Komponen:*" if tx_type == "IN" else "📋 *Rincian Barang:*"
+            items_text = f"\n{rincian_title}\n" + "\n".join(items_lines) + "\n"
 
         merchant_safe = escape_md(str(merchant))
         category_safe = escape_md(str(category))
         wallet_safe = escape_md(str(tx['wallet_name']))
 
+        if tx_type == "IN":
+            header_title = "💵 *Pemasukan Berhasil Dibaca & Disimpan!*"
+            entity_label = "🏢 *Sumber:*"
+            total_label = "💰 *Total Masuk:*"
+            status_note = "🟢 _Otomatis dicatat sebagai pemasukan._"
+            toggle_label = "🔄 Ubah ke Pengeluaran"
+        else:
+            header_title = "🧾 *Struk Berhasil Dibaca & Disimpan!*"
+            entity_label = "🏪 *Toko:*"
+            total_label = "💰 *Total Belanja:*"
+            status_note = "✅ _Otomatis dicatat sebagai pengeluaran._"
+            toggle_label = "🔄 Ubah ke Pemasukan"
+
         response_text = (
-            "🧾 *Struk Berhasil Dibaca & Disimpan!*\n"
+            f"{header_title}\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏪 *Toko:* {merchant_safe}\n"
+            f"{entity_label} {merchant_safe}\n"
             f"📂 *Kategori:* {category_safe}\n"
-            f"💰 *Total:* `{models.format_rupiah(total_amount)}`\n"
+            f"{total_label} `{models.format_rupiah(total_amount)}`\n"
             f"{items_text}"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"💳 *Dompet:* {wallet_safe}\n"
             f"💵 *Sisa Saldo {wallet_safe}:* `{models.format_rupiah(tx['new_balance'])}`\n"
-            "✅ _Otomatis dicatat sebagai pengeluaran._"
+            f"{status_note}"
         )
 
         other_wallet_name = "Jago" if target_wallet["name"].lower() == "cash" else "Cash"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text=f"🔁 Pindah ke {other_wallet_name}", callback_data=f"switch_wallet_{tx['id']}"),
-                InlineKeyboardButton(text="🗑️ Hapus", callback_data=f"del_tx_{tx['id']}")
+                InlineKeyboardButton(text=toggle_label, callback_data=f"toggle_type_{tx['id']}"),
+                InlineKeyboardButton(text=f"🔁 Pindah ke {other_wallet_name}", callback_data=f"switch_wallet_{tx['id']}")
+            ],
+            [
+                InlineKeyboardButton(text="🗑️ Hapus Transaksi", callback_data=f"del_tx_{tx['id']}")
             ]
         ])
 
@@ -1012,10 +1067,14 @@ async def handle_text(message: Message):
             f"💵 *Sisa Saldo {tx['wallet_name']}:* `{models.format_rupiah(tx['new_balance'])}`"
         )
         other_wallet_name = "Jago" if target_wallet["name"].lower() == "cash" else "Cash"
+        toggle_label = "🔄 Ubah ke Pemasukan" if tx_type == "OUT" else "🔄 Ubah ke Pengeluaran"
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text=f"🔁 Pindah ke {other_wallet_name}", callback_data=f"switch_wallet_{tx['id']}"),
-                InlineKeyboardButton(text="🗑️ Hapus", callback_data=f"del_tx_{tx['id']}")
+                InlineKeyboardButton(text=toggle_label, callback_data=f"toggle_type_{tx['id']}"),
+                InlineKeyboardButton(text=f"🔁 Pindah ke {other_wallet_name}", callback_data=f"switch_wallet_{tx['id']}")
+            ],
+            [
+                InlineKeyboardButton(text="🗑️ Hapus Transaksi", callback_data=f"del_tx_{tx['id']}")
             ]
         ])
         await message.reply(reply_text, parse_mode="Markdown", reply_markup=keyboard)
@@ -1027,10 +1086,71 @@ async def handle_text(message: Message):
             "💡 *Format Catat Cepat (Sat-Set):*\n"
             "• Pengeluaran: Cukup ketik nama & nominal (contoh: `kopi susu 25k`, `makan siang 35.000`, `bensin 50rb jago`)\n"
             "• Pemasukan: Wajib gunakan tanda plus `+` (contoh: `+1.5jt gaji`, `+500k bonus`)\n"
-            "• Atau kirim *foto struk* belanja Anda langsung ke sini.\n\n"
+            "• Atau kirim *foto struk / slip gaji / bukti transfer* Anda langsung ke sini.\n\n"
             "Ketik /help untuk panduan lengkap atau /rekap untuk laporan bulanan."
         )
         await message.reply(help_prompt, parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("toggle_type_"))
+async def callback_toggle_type(callback: CallbackQuery):
+    try:
+        tx_id = int(callback.data.replace("toggle_type_", ""))
+        res = models.toggle_transaction_type(tx_id)
+        if res:
+            new_type = res["new_type"]
+            wallet_name = res["wallet_name"]
+            other_wallet = "Cash" if wallet_name.lower() == "jago" else "Jago"
+
+            if new_type == "IN":
+                toggle_btn_text = "🔄 Ubah ke Pengeluaran"
+                status_text = "🟢 _Otomatis dicatat sebagai pemasukan._"
+                type_label = "Pemasukan 🟢"
+            else:
+                toggle_btn_text = "🔄 Ubah ke Pemasukan"
+                status_text = "✅ _Otomatis dicatat sebagai pengeluaran._"
+                type_label = "Pengeluaran 🔴"
+
+            new_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=toggle_btn_text, callback_data=f"toggle_type_{tx_id}"),
+                    InlineKeyboardButton(text=f"🔁 Pindah ke {other_wallet}", callback_data=f"switch_wallet_{tx_id}")
+                ],
+                [
+                    InlineKeyboardButton(text="🗑️ Hapus Transaksi", callback_data=f"del_tx_{tx_id}")
+                ]
+            ])
+
+            if callback.message and callback.message.text:
+                orig_text = callback.message.text
+                lines = orig_text.split("\n")
+                new_lines = []
+                for line in lines:
+                    if "Berhasil Dibaca & Disimpan!" in line:
+                        if new_type == "IN":
+                            new_lines.append("💵 *Pemasukan Berhasil Dibaca & Disimpan!*")
+                        else:
+                            new_lines.append("🧾 *Struk Berhasil Dibaca & Disimpan!*")
+                    elif "📌 Tipe:" in line or "📌 *Tipe:*" in line:
+                        new_lines.append(f"📌 *Tipe:* {type_label}")
+                    elif "📂 Kategori:" in line or "📂 *Kategori:*" in line:
+                        new_lines.append(f"📂 *Kategori:* {res['new_category']}")
+                    elif "💰 Total" in line or "💰 *Total" in line:
+                        prefix = "💰 *Total Masuk:*" if new_type == "IN" else "💰 *Total:*"
+                        new_lines.append(f"{prefix} `{models.format_rupiah(res['amount'])}`")
+                    elif "💵 Sisa Saldo" in line or "💵 *Sisa Saldo" in line:
+                        new_lines.append(f"💵 *Sisa Saldo {wallet_name}:* `{models.format_rupiah(res['new_balance'])}`")
+                    elif "Otomatis dicatat sebagai" in line:
+                        new_lines.append(status_text)
+                    else:
+                        new_lines.append(line)
+
+                await callback.message.edit_text("\n".join(new_lines), parse_mode="Markdown", reply_markup=new_keyboard)
+                await callback.answer(f"✅ Diubah menjadi {type_label}!", show_alert=False)
+        else:
+            await callback.answer("⚠️ Transaksi tidak ditemukan.", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error toggling transaction type: {e}", exc_info=True)
+        await callback.answer("⚠️ Gagal mengubah tipe transaksi.", show_alert=True)
 
 @router.callback_query(F.data.startswith("switch_wallet_"))
 async def callback_switch_wallet(callback: CallbackQuery):
@@ -1041,10 +1161,23 @@ async def callback_switch_wallet(callback: CallbackQuery):
             new_wallet = res["new_wallet_name"]
             next_target = "Cash" if new_wallet.lower() == "jago" else "Jago"
             
+            # Periksa tipe transaksi untuk tombol toggle
+            conn = models.get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT type FROM transactions WHERE id = ?;", (tx_id,))
+            row = cur.fetchone()
+            conn.close()
+
+            curr_type = row["type"] if row else "OUT"
+            toggle_label = "🔄 Ubah ke Pengeluaran" if curr_type == "IN" else "🔄 Ubah ke Pemasukan"
+
             new_keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(text=f"🔁 Pindah ke {next_target}", callback_data=f"switch_wallet_{tx_id}"),
-                    InlineKeyboardButton(text="🗑️ Hapus", callback_data=f"del_tx_{tx_id}")
+                    InlineKeyboardButton(text=toggle_label, callback_data=f"toggle_type_{tx_id}"),
+                    InlineKeyboardButton(text=f"🔁 Pindah ke {next_target}", callback_data=f"switch_wallet_{tx_id}")
+                ],
+                [
+                    InlineKeyboardButton(text="🗑️ Hapus Transaksi", callback_data=f"del_tx_{tx_id}")
                 ]
             ])
             

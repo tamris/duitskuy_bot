@@ -215,6 +215,24 @@ class TestFinanceBot(unittest.TestCase):
         wallets = models.get_all_wallets()
         self.assertEqual(sum(item["balance"] for item in wallets), 0.0)
 
+    def test_toggle_transaction_type(self):
+        w = models.get_default_wallet()
+        tx = models.add_transaction(w["id"], "OUT", 50000, "Makanan & Minuman", "Kopi Susu")
+        w_cur = models.get_wallet_by_id(w["id"])
+        self.assertEqual(w_cur["balance"], -50000.0)
+
+        # Toggle OUT -> IN
+        res = models.toggle_transaction_type(tx["id"])
+        self.assertIsNotNone(res)
+        self.assertEqual(res["new_type"], "IN")
+        self.assertEqual(res["new_balance"], 50000.0)
+
+        # Toggle IN -> OUT
+        res2 = models.toggle_transaction_type(tx["id"])
+        self.assertIsNotNone(res2)
+        self.assertEqual(res2["new_type"], "OUT")
+        self.assertEqual(res2["new_balance"], -50000.0)
+
 if __name__ == "__main__":
     unittest.main()
 
