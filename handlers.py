@@ -291,6 +291,7 @@ async def cmd_start(message: Message):
         "• /export — Unduh file laporan Excel (.xlsx)\n"
         "• /api — Kelola pool multi-key Gemini\n"
         "• /reset — Reset seluruh database (Kembali seperti baru)\n"
+        "• /id — Cek ID Telegram Anda (untuk kunci proteksi bot)\n"
         "• /help — Menampilkan panduan ini\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💡 _Ketik langsung perintah di atas di chat kapan saja!_ 🚀"

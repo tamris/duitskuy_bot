@@ -233,6 +233,53 @@ class TestFinanceBot(unittest.TestCase):
         self.assertEqual(res2["new_type"], "OUT")
         self.assertEqual(res2["new_balance"], -50000.0)
 
+    def test_whitelist_middleware(self):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from middlewares import WhitelistMiddleware, get_allowed_telegram_ids
+
+        # 1. Test get_allowed_telegram_ids
+        os.environ["ALLOWED_TELEGRAM_IDS"] = "12345, 67890"
+        ids = get_allowed_telegram_ids()
+        self.assertEqual(ids, {12345, 67890})
+
+        # 2. Test WhitelistMiddleware with allowed user
+        mw = WhitelistMiddleware(allowed_user_ids={12345})
+        mock_handler = AsyncMock(return_value="OK")
+        mock_event = MagicMock()
+        mock_event.from_user.id = 12345
+        mock_event.text = "halo"
+
+        res = asyncio.run(mw(mock_handler, mock_event, {}))
+        self.assertEqual(res, "OK")
+        mock_handler.assert_called_once()
+
+        # 3. Test WhitelistMiddleware with unauthorized user
+        mock_handler.reset_mock()
+        mock_event_unauth = MagicMock()
+        mock_event_unauth.from_user.id = 99999
+        mock_event_unauth.from_user.username = "intruder"
+        mock_event_unauth.text = "halo"
+        mock_event_unauth.reply = AsyncMock()
+
+        res_unauth = asyncio.run(mw(mock_handler, mock_event_unauth, {}))
+        self.assertIsNone(res_unauth)
+        mock_handler.assert_not_called()
+        mock_event_unauth.reply.assert_called_once()
+        self.assertIn("Akses Ditolak", mock_event_unauth.reply.call_args[0][0])
+
+        # 4. Test /id command works even for unauthorized user
+        mock_event_id = MagicMock()
+        mock_event_id.from_user.id = 99999
+        mock_event_id.text = "/id"
+        mock_event_id.reply = AsyncMock()
+
+        res_id = asyncio.run(mw(mock_handler, mock_event_id, {}))
+        self.assertIsNone(res_id)
+        mock_handler.assert_not_called()
+        mock_event_id.reply.assert_called_once()
+        self.assertIn("ID Telegram Anda", mock_event_id.reply.call_args[0][0])
+
 if __name__ == "__main__":
     unittest.main()
 

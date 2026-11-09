@@ -11,6 +11,7 @@ from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAll
 
 from database import init_db
 from handlers import router
+from middlewares import WhitelistMiddleware, get_allowed_telegram_ids
 
 # Konfigurasi logging
 logging.basicConfig(
@@ -30,6 +31,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="export", description="📊 Unduh Laporan Excel (.xlsx)"),
         BotCommand(command="api", description="🔑 Kelola Multi Gemini API Key"),
         BotCommand(command="reset", description="⚠️ Reset Semua Data Database"),
+        BotCommand(command="id", description="🆔 Cek Telegram ID Saya"),
         BotCommand(command="help", description="💡 Panduan & Format Cepat")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
@@ -73,7 +75,21 @@ async def main():
     )
     dp = Dispatcher()
 
-    # 4. Registrasi Router handlers
+    # 4. Registrasi Outer Middleware untuk Proteksi Akses (Whitelist ID Telegram)
+    allowed_ids = get_allowed_telegram_ids()
+    if allowed_ids:
+        logger.info(f"🔒 Proteksi Whitelist Aktif! Bot hanya dapat diakses oleh Telegram ID: {allowed_ids}")
+    else:
+        logger.warning(
+            "⚠️ PERINGATAN KEAMANAN: ALLOWED_TELEGRAM_IDS belum diatur di .env!\n"
+            "Bot saat ini terbuka untuk umum. Ketik /id di bot untuk mengetahui ID Telegram Anda dan pasang di .env."
+        )
+
+    whitelist_mw = WhitelistMiddleware(allowed_ids)
+    dp.message.outer_middleware(whitelist_mw)
+    dp.callback_query.outer_middleware(whitelist_mw)
+
+    # 5. Registrasi Router handlers
     dp.include_router(router)
 
     logger.info("Bot Telegram Keuangan Pribadi siap dijalankan! Menghapus webhook lama...")
